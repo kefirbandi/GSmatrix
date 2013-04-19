@@ -1,7 +1,8 @@
 GSmatrix
 ========
 
-Move 2D data structures between Python and Google spreadsheet
+Move 2D data structures between Python and Google spreadsheet.
+A high-level interface.
 
 
 Example

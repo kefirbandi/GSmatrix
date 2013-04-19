@@ -10,7 +10,7 @@ from collections import defaultdict
 class MatrixSpreadsheet:
     """Facilitates moving data between Google Spreadsheets and numpy 2-d arrays."""
     
-    def __init__(self, email_, password_, spreadsheet_="PythonVariables" ):
+    def __init__(self, email_, password_, spreadsheetName_=None, spreadsheetKey_ = None ):
         """Constructor for the MatrixSpreadsheet object.
 
         Takes an email, password corresponding to a gmail account and the name of
@@ -22,7 +22,10 @@ class MatrixSpreadsheet:
           password_: [string] The password corresponding to the account specified by
             the email parameter.
 
-          spreadsheet_: [string] The name of the spreadsheet to use.
+          spreadsheetName_: [string] The name of the spreadsheet to use.
+
+          spreadsheetKey_: [string] The document key of the spreadsheet to use. (This is the long identifier you see in the url.)
+          Either spreadsheetName_ or spreadsheetKey_ has to be given, but not both.
         """
         
         self.gd_client = gdata.spreadsheet.service.SpreadsheetsService()
@@ -31,7 +34,9 @@ class MatrixSpreadsheet:
 
         self.gd_client.ProgrammaticLogin()
 
-        self.key = self._KeyFromSpreadsheetName(spreadsheet_)
+        if spreadsheetName_ and spreadsheetKey_ :
+            raise Exception("Give either key or name, but not both")
+        self.key = spreadsheetKey_ or self._KeyFromSpreadsheetName(spreadsheetName_)
 
         self.ws_map = {}
         #ws_map is our internal storage of the worksheet data
