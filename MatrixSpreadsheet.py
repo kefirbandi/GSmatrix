@@ -59,7 +59,7 @@ class MatrixSpreadsheet:
                                             {},#our local cache
                                             wsf_] #the object itself, may come handy later 
     
-    def _cacheWS(self, worksheetName_, create_ = False ):
+    def _cacheWS(self, worksheetName_, create_ = False, cellFeedOnly_ = False ):
         """Ensures that we cache the latest snapshot of the worksheet.
         
         Compares the timestamp of the cache with the timestamp of the on-line version,
@@ -69,6 +69,8 @@ class MatrixSpreadsheet:
         Args:
           worksheetName_: [string] Name of the worksheet to reload.
           create_: [bool] Whether to create the worksheet if not found or rather to bowl a googly
+          cellFeedOnly_: [bool] If False: create the cell dictionary (if modified since cached), put it in the cache and return it
+              If True: do not create the dictionary, only return the gdata cellfeed object
           
         Returns:
           Worksheet cache
@@ -103,18 +105,33 @@ class MatrixSpreadsheet:
         #in any case wsf is what we need it to be.
         
         
-        my_time = self.ws_map[worksheetName_][1]
-        last_update_time = str2secs(wsf.updated.text)
-
-        if last_update_time > my_time:
-            # print('Reloading')
-            cellfeed = self.gd_client.GetCellsFeed(self.key,self._WorksheetIDFromName(worksheetName_))
-            self.ws_map[worksheetName_][2] = cellFeedToDict(cellfeed)
-            self.ws_map[worksheetName_][1] = last_update_time
-        return self.ws_map[worksheetName_][2]
+        cellfeed = self.gd_client.GetCellsFeed(self.key,self._WorksheetIDFromName(worksheetName_))
+        if cellFeedOnly_:
+            return cellfeed
+            
+        else:
+                
+            my_time = self.ws_map[worksheetName_][1]
+            last_update_time = str2secs(wsf.updated.text)
+    
+            if last_update_time > my_time:
+                # print('Reloading')
+                #cellfeed = self.gd_client.GetCellsFeed(self.key,self._WorksheetIDFromName(worksheetName_))
+                self.ws_map[worksheetName_][2] = cellFeedToDict(cellfeed)
+                self.ws_map[worksheetName_][1] = last_update_time
+                
+            return self.ws_map[worksheetName_][2]
          
-    def Read(self,worksheetName_,position_=(1,1),rows_=0,cols_=0):
+    def Read(self,worksheetName_,position_=(1,1),rows_=0,cols_=0, readString_ = False, allowEmpty_ = None):
+        """
+        
+        Args:
+          readString_: [bool] Whether to return strings (arbitrary length) or numbers in the array
+          allowEmpty_: [anything] If not None: allow empty values in reading when both rows_ and cols_ are given.
+              Its value is the default value. 
+        """
         #at least one of rows_ or cols_ should be given (>0)
+        
         if (rows_<0) or (cols_<0) or ((rows_+cols_) < 1):
             return (numpy.matrix(()))
             
@@ -122,49 +139,68 @@ class MatrixSpreadsheet:
         cellDict = self._cacheWS(worksheetName_,create_=False)            
         #Now we can start to do real work
 
+        if (rows_ > 0) and (cols_ >0) and not (allowEmpty_ is None):
+            readRows=rows_
+            readCols=cols_
+            
+        else:
         #First we find out how many rows and columns we need to read if one of them is not given.
         #If both given we need to check if table holds the required data.
         #The number of rows/columns to read will be stored in variables readRows/readCols
-
-        if rows_ > 0:
-            readCols=sys.maxint
-            readRows=rows_
-            for r in range(position_[0],position_[0]+rows_):
-                if not cellDict.has_key(r):
-                    raise (Exception('Row not found',r))
-                c = position_[1]
-                while isInDict(cellDict,r,c) and ((cols_ == 0) or (c<position_[1]+cols_)):
-                    c += 1
-                if (cols_>0) and (c-position_[1] < cols_):
-                    raise (Exception('Not enough columns in row',r))
-                readCols = min(readCols,c-position_[1])
-                if readCols == 0:
-                    raise (Exception('Some rows have 0 columns'))
-           
-                    
-        else: #rows is 0
-            readCols = cols_
-            r = position_[0]
-            enough_cols = True
-            while cellDict.has_key(r) and enough_cols:
-                c=position_[1]
-                while cellDict[r].has_key(c) and (c < position_[1]+cols_):
-                    c += 1
-                if c<position_[1]+cols_:
-                    enough_cols = False
-                r += 1
             
-            if r == position_[0]+1:
-                raise(Exception('No rows with sufficient number of columns'))
+            if rows_ > 0:
+                readCols=sys.maxint
+                readRows=rows_
+                for r in range(position_[0],position_[0]+rows_):
+                    if not cellDict.has_key(r):
+                        raise (Exception('Row not found',r))
+                    c = position_[1]
+                    while isInDict(cellDict,r,c) and ((cols_ == 0) or (c<position_[1]+cols_)):
+                        c += 1
+                    if (cols_>0) and (c-position_[1] < cols_):
+                        raise (Exception('Not enough columns in row',r))
+                    readCols = min(readCols,c-position_[1])
+                    if readCols == 0:
+                        raise (Exception('Some rows have 0 columns'))
+               
+                        
+            else: #rows is 0
+                readCols = cols_
+                r = position_[0]
+                enough_cols = True
+                while cellDict.has_key(r) and enough_cols:
+                    c=position_[1]
+                    while cellDict[r].has_key(c) and (c < position_[1]+cols_):
+                        c += 1
+                    if c<position_[1]+cols_:
+                        enough_cols = False
+                    r += 1
                 
-            readRows = r-position_[0]
+                if r == position_[0]+1:
+                    raise(Exception('No rows with sufficient number of columns'))
+                    
+                readRows = r-position_[0]
                 
                 
         #ok, now we know what we need, only need to read        
-        a = numpy.zeros([readRows,readCols])
+
+
+        if readString_:
+            a = numpy.empty([readRows,readCols],dtype=object)
+        else:
+            a = numpy.empty([readRows,readCols])
+
+        if not allowEmpty_ is None:
+            reader = lambda r,c : cellDict[r][c] if (cellDict.has_key(r) and cellDict[r].has_key(c)) else allowEmpty_
+        else:
+            reader = lambda r,c : cellDict[r][c]
+
+
         for r in xrange(position_[0],position_[0]+readRows):
             for c in xrange(position_[1],position_[1]+readCols):
-                a[r-position_[0]][c-position_[1]] = cellDict[r][c]
+                #a[r-position_[0]][c-position_[1]] = cellDict[r][c]
+                a[r-position_[0]][c-position_[1]] = reader(r,c)
+                
                 
         return (a)
             
