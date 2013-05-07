@@ -174,9 +174,10 @@ class MatrixSpreadsheet:
                         c += 1
                     if c<position_[1]+cols_:
                         enough_cols = False
-                    r += 1
+                    else:
+                    	r += 1
                 
-                if r == position_[0]+1:
+                if r == position_[0]:
                     raise(Exception('No rows with sufficient number of columns'))
                     
                 readRows = r-position_[0]
